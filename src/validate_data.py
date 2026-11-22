@@ -1,43 +1,106 @@
 import csv
+import json
 import sys
 from pathlib import Path
 
-# Textos que podrían considerarse como valores nulos
+# Raíz del repositorio (este archivo está en src/)
+ROOT = Path(__file__).resolve().parent.parent
+CONTRACT_PATH = ROOT / "data_contract.json"
+DEFAULT_FILES = ["data/processed/train.csv", "data/processed/test.csv"]
+
+# Textos que se consideran valores nulos (se comparan en minúsculas)
 NULL_VALUES = {"", "nan", "none", "null", "na"}
 
-# Reglas para cada columna
-SCHEMA = {
-    "sepal length (cm)": {"type": float, "min": 3.0, "max": 9.0},
-    "sepal width (cm)": {"type": float, "min": 1.0, "max": 6.0},
-    "petal length (cm)": {"type": float, "min": 0.5, "max": 8.0},
-    "petal width (cm)": {"type": float, "min": 0.1, "max": 3.5},
-    "species": {"type": int, "allowed": {0, 1, 2}},
-}
+# Tipos que puede declarar el contrato
+TYPES = {"float": float, "int": int}
 
-DEFAULT_FILES = ["data/processed/train.csv", "data/processed/test.csv"]
+
+def load_contract(path=CONTRACT_PATH):
+    """Lee el contrato de datos (JSON) con la biblioteca estándar."""
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def build_schema(contract):
+    """Construye las reglas por columna a partir del contrato.
+
+    El orden es el de feature_order, seguido de la variable objetivo,
+    que es el orden de las columnas de los CSV.
+    """
+    fields = contract["input"]["fields"]
+    schema = {}
+    for name in contract["input"]["feature_order"]:
+        rules = fields[name]
+        schema[name] = {
+            "type": TYPES[rules["type"]],
+            "nullable": rules.get("nullable", False),
+            "min": rules["min"],
+            "max": rules["max"],
+        }
+
+    output = contract["output"]
+    output_type = TYPES[output["type"]]
+    schema[output["field"]] = {
+        "type": output_type,
+        "nullable": False,
+        "allowed": {output_type(value) for value in output["allowed_values"]},
+    }
+    return schema
+
+
+CONTRACT = load_contract()
+FEATURES = CONTRACT["input"]["feature_order"]
+SCHEMA = build_schema(CONTRACT)
 
 
 def validate_value(column, raw, rules):
     """Devuelve un mensaje de error si el valor no cumple las reglas, o None si es válido."""
     text = (raw or "").strip()
 
-    # Para ausencia de nulos
+    # 1. Ausencia de nulos
     if text.lower() in NULL_VALUES:
+        if rules.get("nullable", False):
+            return None
         return f"valor nulo o vacío en '{column}'"
 
-    # Para el tipo correcto recibido
+    # 2. Tipo correcto
     try:
         value = rules["type"](text)
     except ValueError:
         return f"'{column}' debe ser {rules['type'].__name__}, se recibió '{text}'"
 
-    # Valores permitidos
+    # 3. Rango lógico o valores permitidos
     if "allowed" in rules and value not in rules["allowed"]:
         return f"'{column}' = {value} no está entre los valores permitidos {sorted(rules['allowed'])}"
     if "min" in rules and not (rules["min"] <= value <= rules["max"]):
         return f"'{column}' = {value} fuera del rango [{rules['min']}, {rules['max']}]"
 
     return None
+
+
+def validate_record(record):
+    """Valida una entrada individual (diccionario) contra el contrato.
+
+    Es la validación que se aplicaría a una entrada de inferencia.
+    Devuelve la lista de errores (vacía si la entrada es válida).
+    """
+    errors = []
+
+    missing = [name for name in FEATURES if name not in record]
+    extra = [name for name in record if name not in FEATURES]
+    if missing:
+        errors.append(f"faltan campos obligatorios: {missing}")
+    if extra:
+        errors.append(f"campos no permitidos: {extra}")
+
+    for name in FEATURES:
+        if name in record:
+            value = record[name]
+            raw = "" if value is None else str(value)
+            problem = validate_value(name, raw, SCHEMA[name])
+            if problem:
+                errors.append(problem)
+    return errors
 
 
 def validate_file(path):

@@ -1,9 +1,21 @@
 {
   "contract_name": "iris_model_input_contract",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Contrato de datos oficial para la inferencia del modelo RandomForest entrenado con el dataset Iris.",
+  "model": {
+    "name": "iris_model",
+    "algorithm": "RandomForestClassifier (scikit-learn)",
+    "task": "clasificación multiclase",
+    "target": "species"
+  },
   "input": {
-    "format": "objeto JSON con exactamente 4 campos numéricos, todos obligatorios",
+    "format": "objeto JSON con exactamente 4 campos numéricos, todos obligatorios; el modelo los recibe por posición, en el orden de feature_order",
+    "feature_order": [
+      "sepal length (cm)",
+      "sepal width (cm)",
+      "petal length (cm)",
+      "petal width (cm)"
+    ],
     "fields": {
       "sepal length (cm)": {
         "type": "float",
