@@ -221,3 +221,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# MLflow (historial local de experimentos)
+mlruns/
+mlflow.db
