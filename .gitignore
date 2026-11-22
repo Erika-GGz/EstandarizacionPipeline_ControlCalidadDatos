@@ -225,3 +225,6 @@ __marimo__/
 # MLflow (historial local de experimentos)
 mlruns/
 mlflow.db
+
+# Datos generados por el pipeline
+data/processed/
